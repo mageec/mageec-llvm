@@ -155,6 +155,7 @@ namespace {
       (void) llvm::createBBVectorizePass();
       (void) llvm::createPartiallyInlineLibCallsPass();
       (void) llvm::createScalarizerPass();
+      (void) llvm::createMageecFeatureExtractorPass();
 
       (void)new llvm::IntervalPartition();
       (void)new llvm::FindUsedTypes();

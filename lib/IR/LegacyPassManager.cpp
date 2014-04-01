@@ -289,6 +289,7 @@ namespace {
 class MPPassManager : public Pass, public PMDataManager {
 public:
   static char ID;
+  static MageecInterface mageec;
   explicit MPPassManager() :
     Pass(PT_PassManager, ID), PMDataManager() { }
 
@@ -374,6 +375,7 @@ public:
 };
 
 char MPPassManager::ID = 0;
+MageecInterface MPPassManager::mageec;
 } // End anonymous namespace
 
 namespace llvm {
@@ -1498,6 +1500,7 @@ bool FunctionPassManagerImpl::run(Function &F) {
 // FPPassManager implementation
 
 char FPPassManager::ID = 0;
+MageecInterface FPPassManager::mageec;
 /// Print passes managed by this manager
 void FPPassManager::dumpPassStructure(unsigned Offset) {
   dbgs().indent(Offset*2) << "FunctionPass Manager\n";
@@ -1534,7 +1537,8 @@ bool FPPassManager::runOnFunction(Function &F) {
       PassManagerPrettyStackEntry X(FP, F);
       TimeRegion PassTimer(getPassTimer(FP));
 
-      LocalChanged |= FP->runOnFunction(F);
+      if (mageec.decideFP(FP, F))
+        LocalChanged |= FP->runOnFunction(F);
     }
 
     Changed |= LocalChanged;
@@ -1612,7 +1616,8 @@ MPPassManager::runOnModule(Module &M) {
       PassManagerPrettyStackEntry X(MP, M);
       TimeRegion PassTimer(getPassTimer(MP));
 
-      LocalChanged |= MP->runOnModule(M);
+      if (mageec.decideMP(MP, M))
+        LocalChanged |= MP->runOnModule(M);
     }
 
     Changed |= LocalChanged;

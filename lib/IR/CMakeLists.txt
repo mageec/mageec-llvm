@@ -41,6 +41,7 @@ add_llvm_library(LLVMCore
   ValueSymbolTable.cpp
   ValueTypes.cpp
   Verifier.cpp
+  MAGEECPlugin.cpp
   )
 
 # Workaround: It takes over 20 minutes to compile with msvc10.
@@ -53,3 +54,7 @@ set_property(
 endif()
 
 add_dependencies(LLVMCore intrinsics_gen)
+
+# FIXME: We link in the mageec library to LLVMCore so that the pass manager
+# can communicate with a machine learner
+target_link_libraries(LLVMCore -lmageec)

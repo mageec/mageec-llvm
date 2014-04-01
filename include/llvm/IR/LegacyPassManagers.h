@@ -18,6 +18,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/MAGEECPlugin.h"
 #include "llvm/Pass.h"
 #include <map>
 #include <vector>
@@ -406,6 +407,8 @@ private:
 /// sequence them to process one function at a time before processing next
 /// function.
 class FPPassManager : public ModulePass, public PMDataManager {
+private:
+  static MageecInterface mageec;
 public:
   static char ID;
   explicit FPPassManager()

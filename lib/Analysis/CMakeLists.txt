@@ -30,6 +30,7 @@ add_llvm_library(LLVMAnalysis
   Loads.cpp
   LoopInfo.cpp
   LoopPass.cpp
+  MAGEECFeatureExtractor.cpp
   MemDepPrinter.cpp
   MemoryBuiltins.cpp
   MemoryDependenceAnalysis.cpp

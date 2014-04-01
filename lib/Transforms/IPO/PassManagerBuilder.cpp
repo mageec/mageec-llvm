@@ -124,6 +124,7 @@ void PassManagerBuilder::populateFunctionPassManager(FunctionPassManager &FPM) {
 }
 
 void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
+  MPM.add(createMageecFeatureExtractorPass());
   // If all optimizations are disabled, just run the always-inline pass.
   if (OptLevel == 0) {
     if (Inliner) {
