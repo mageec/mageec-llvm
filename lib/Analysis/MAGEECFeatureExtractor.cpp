@@ -119,6 +119,52 @@ static bool insn_is_assignment(Instruction *I) {
   }
 }
 
+static bool insn_is_binary_int(Instruction *I) {
+  switch (I->getOpcode()) {
+    case Instruction::Add:
+    case Instruction::Sub:
+    case Instruction::Mul:
+    case Instruction::UDiv:
+    case Instruction::SDiv:
+    case Instruction::URem:
+    case Instruction::SRem:
+    case Instruction::Shl: // Shift left  (logical)
+    case Instruction::LShr: // Shift right (logical)
+    case Instruction::AShr: // Shift right (arithmetic)
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor:
+    case Instruction::PtrToInt: // Pointer -> Integer
+    case Instruction::IntToPtr: // Integer -> Pointer
+    case Instruction::ICmp: // Integer comparison instruction
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool insn_is_binary_float(Instruction *I) {
+  switch (I->getOpcode()) {
+    case Instruction::FAdd:
+    case Instruction::FSub:
+    case Instruction::FMul:
+    case Instruction::FDiv:
+    case Instruction::FRem:
+    case Instruction::FCmp: // Floating point comparison instr.
+      return true;
+    default:
+      return false;
+  }
+}
+
+static unsigned inline insn_count_operands(Instruction *I) {
+  unsigned ops = 0;
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+      OI != OE; ++OI)
+    ops++;
+  return ops;
+}
+
 namespace {
   struct MageecFeatureExtractor : public FunctionPass {
   public:
@@ -146,12 +192,22 @@ namespace {
       unsigned insn_count_lt15 = 0;       //ft13
       unsigned insn_count_15_to_500 = 0;  //ft14
       unsigned insn_count_gt500 = 0;      //ft15
+      unsigned direct_calls = 0;          //ft16
       unsigned method_assignments = 0;    //ft21
+      unsigned method_binary_int = 0;     //ft22
+      unsigned method_binary_float = 0;   //ft23
+      unsigned average_phi_node_head = 0; //ft26
+      unsigned average_phi_args = 0;      //ft27
       unsigned bb_phi_count_0 = 0;        //ft28
       unsigned bb_phi_count_0_to_3 = 0;   //ft29
       unsigned bb_phi_count_gt3 = 0;      //ft30
+      unsigned bb_phi_args_gt5 = 0;       //ft31
+      unsigned bb_phi_args_1_to_5 = 0;    //ft32
+      unsigned method_switch_stmt = 0;    //ft33
 
-      // Temporaries
+      // Cross-BasicBlock Temporaries
+      unsigned phi_header_nodes = 0;      //total for ft26
+      unsigned total_phi_args = 0;        //total for ft27
       unsigned total_phi_nodes = 0;       //divisor for ft27
 
       // Count basic blocks
@@ -160,6 +216,8 @@ namespace {
         BasicBlock *BB = FI;
         unsigned statementcount = 0;
         unsigned phi_nodes = 0;  // phis in current block
+        unsigned phi_args = 0;   // phi args in current block
+        bool in_phi_header = true;
 
         // Count instructions in each basic block
         basicblocks++;
@@ -168,13 +226,28 @@ namespace {
           Instruction *I = BI;
           statementcount++;
 
-          if (insn_is_assignment(I))
+          if (insn_is_assignment(I)) {
             method_assignments++;
+          }
+          if (I->getOpcode() == Instruction::Call)
+            direct_calls++;
 
+          if (insn_is_binary_int(I))
+            method_binary_int++;
+          if (insn_is_binary_float(I))
+            method_binary_float++;
           if (I->getOpcode() == Instruction::PHI) {
             phi_nodes++;
             total_phi_nodes++;
+            if (in_phi_header)
+              phi_header_nodes++;
+            phi_args += insn_count_operands(I);
+            total_phi_args += insn_count_operands(I);
           }
+          else
+            in_phi_header = false;
+          if (I->getOpcode() == Instruction::Switch)
+            method_switch_stmt++;
         }
 
         // Successor/predecessor information
@@ -218,7 +291,16 @@ namespace {
           bb_phi_count_0_to_3++;
         else
           bb_phi_count_gt3++;
+        if (phi_args > 5)
+          bb_phi_args_gt5++;
+        else if ((phi_args >= 1) && (phi_args <= 5))
+          bb_phi_args_1_to_5++;
       }
+
+      // Calculate averages once totals have been collected
+      if (total_phi_nodes > 0)
+        average_phi_args = total_phi_args / total_phi_nodes;
+      average_phi_node_head = phi_header_nodes / basicblocks;
 
       errs() << "Current Function: ";
       errs().write_escaped(F.getName()) << '\n';
@@ -237,14 +319,19 @@ namespace {
       errs() << "  (ft13) BB with insn < 15:       " << insn_count_lt15 << '\n';
       errs() << "  (ft14) BB with insn [15, 500]:  " << insn_count_15_to_500 << '\n';
       errs() << "  (ft15) BB with insn > 500:      " << insn_count_gt500 << '\n';
+      errs() << "  (ft16) Number of direct calls:  " << direct_calls << '\n';
       errs() << "  (ft21) Assignments in method:   " << method_assignments << '\n';
       errs() << "  (ft24) Total Statement in BB:   " << vector_sum(insncounts) << '\n';
       errs() << "  (ft25) Avg Statement in BB:     " << vector_sum(insncounts)
                 /basicblocks << '\n';
+      errs() << "  (ft26) Avg phis at top of BB:   " << average_phi_node_head << '\n';
+      errs() << "  (ft27) Average phi arg count:   " << average_phi_args << '\n';
       errs() << "  (ft28) BB with 0 phis:          " << bb_phi_count_0 << '\n';
       errs() << "  (ft29) BB with [0, 3] phis:     " << bb_phi_count_0_to_3 << '\n';
       errs() << "  (ft30) BB with > 3 phis:        " << bb_phi_count_gt3 << '\n';
-
+      errs() << "  (ft31) BB phis with > 5 args:   " << bb_phi_args_gt5 << '\n';
+      errs() << "  (ft32) BB phis with [1,5] args: " << bb_phi_args_1_to_5 << '\n';
+      errs() << "  (ft33) Switch stmts in method:  " << method_switch_stmt << '\n';
 
       /* Build feature vector to pass to machine learner */
       std::vector<mageec::mageec_feature*> features;
