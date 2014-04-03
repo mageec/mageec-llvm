@@ -93,4 +93,11 @@ void MageecInterface::initializeFramework() {
   assert(initialized && "Unable to initilize MAGEEC framework.");
 }
 
+void MageecInterface::takeFeatures(StringRef Name,
+      std::vector<mageec::mageec_feature*> Features) {
+  if (!initialized)
+    return;
+  framework.take_features(Name, Features);
+}
+
 }

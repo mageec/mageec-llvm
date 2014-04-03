@@ -44,6 +44,8 @@ public:
   bool decideFP(const Pass *pass, const Function &F);
   // Decide whether to run a ModulePass
   bool decideMP(const Pass *pass, const Module &M);
+  // Pass features onto MAGEEC
+  void takeFeatures(StringRef Name, std::vector<mageec::mageec_feature*> Features);
 };
 
 } // end namespace llvm

@@ -242,6 +242,7 @@ static inline unsigned count_int_consts(Instruction *I, unsigned size) {
 
 namespace {
   struct MageecFeatureExtractor : public FunctionPass {
+    MageecInterface instance;
   public:
     static char ID;
     MageecFeatureExtractor() : FunctionPass(ID) {
@@ -442,6 +443,45 @@ namespace {
 
       /* Build feature vector to pass to machine learner */
       std::vector<mageec::mageec_feature*> features;
+      features.push_back(new basic_feature("ft1", basicblocks));
+      features.push_back(new basic_feature("ft2", bb_single_successor));
+      features.push_back(new basic_feature("ft3", bb_two_successors));
+      features.push_back(new basic_feature("ft4", bb_gt2_successors));
+      features.push_back(new basic_feature("ft5", bb_single_predecessor));
+      features.push_back(new basic_feature("ft6", bb_two_predecessors));
+      features.push_back(new basic_feature("ft7", bb_gt2_predecessors));
+      features.push_back(new basic_feature("ft8", bb_1pred_1succ));
+      features.push_back(new basic_feature("ft9", bb_1pred_2succ));
+      features.push_back(new basic_feature("ft10", bb_2pred_1succ));
+      features.push_back(new basic_feature("ft11", bb_2pred_2succ));
+      features.push_back(new basic_feature("ft12", bb_gt2pred_gt2succ));
+      features.push_back(new basic_feature("ft13", insn_count_lt15));
+      features.push_back(new basic_feature("ft14", insn_count_15_to_500));
+      features.push_back(new basic_feature("ft15", insn_count_gt500));
+      features.push_back(new basic_feature("ft19", direct_calls));
+      features.push_back(new basic_feature("ft21", method_assignments));
+      features.push_back(new basic_feature("ft22", method_binary_int));
+      features.push_back(new basic_feature("ft23", method_binary_float));
+      features.push_back(new basic_feature("ft24", vector_sum(insncounts)));
+      features.push_back(new basic_feature("ft25", vector_sum(insncounts)/basicblocks));
+      features.push_back(new basic_feature("ft26", average_phi_node_head));
+      features.push_back(new basic_feature("ft27", average_phi_args));
+      features.push_back(new basic_feature("ft28", bb_phi_count_0));
+      features.push_back(new basic_feature("ft29", bb_phi_count_0_to_3));
+      features.push_back(new basic_feature("ft30", bb_phi_count_gt3));
+      features.push_back(new basic_feature("ft31", bb_phi_args_gt5));
+      features.push_back(new basic_feature("ft32", bb_phi_args_1_to_5));
+      features.push_back(new basic_feature("ft33", method_switch_stmt));
+      features.push_back(new basic_feature("ft42", calls_with_ptr_args));
+      features.push_back(new basic_feature("ft43", calls_gt4_ops));
+      features.push_back(new basic_feature("ft44", calls_ret_ptr));
+      features.push_back(new basic_feature("ft45", calls_ret_int));
+      features.push_back(new basic_feature("ft46", const_int_zeroes));
+      features.push_back(new basic_feature("ft47", const_32bit_uses));
+      features.push_back(new basic_feature("ft48", const_int_ones));
+      features.push_back(new basic_feature("ft49", const_64bit_uses));
+
+      instance.takeFeatures(F.getName(), features);
 
       return false;
     }
