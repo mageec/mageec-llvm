@@ -18,6 +18,7 @@
 
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/MAGEECPlugin.h"
 #include "llvm/Pass.h"
@@ -157,12 +158,86 @@ static bool insn_is_binary_float(Instruction *I) {
   }
 }
 
-static unsigned inline insn_count_operands(Instruction *I) {
+static inline unsigned insn_count_operands(Instruction *I) {
   unsigned ops = 0;
   for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
       OI != OE; ++OI)
     ops++;
   return ops;
+}
+
+static inline bool call_has_ptr_arg(Instruction *I) {
+  assert((I->getOpcode() == Instruction::Call) && "Called on non-call insn.");
+  llvm::Value *V;
+  // The last operand of the call instruction is a pointer to the called fn.
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+      OI != OE; ++OI) {
+    V = *OI;
+  }
+  // V is a pointer to a function. The function itself is the pointer's
+  // first contained type.
+  llvm::Type *FT = V->getType()->getContainedType(0);
+  if (FT->getNumContainedTypes() == 1) // Function takes no arguments
+    return false;
+  for (int i = 1, args = FT->getNumContainedTypes(); i < args; i++)
+    if (FT->getContainedType(i)->isPointerTy())
+      return true;
+  return false;
+}
+
+static inline bool call_returns_int(Instruction *I) {
+  assert((I->getOpcode() == Instruction::Call) && "Called on non-call insn.");
+  llvm::Value *V;
+  // The last operand of the call instruction is a pointer to the called fn.
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+      OI != OE; ++OI) {
+    V = *OI;
+  }
+  // V is a pointer to a function. The function itself is the pointer's
+  // first contained type. The return type is the first contained type of
+  // the function definition.
+  llvm::Type *RT = V->getType()->getContainedType(0)->getContainedType(0);
+  return RT->isIntegerTy();
+}
+
+static inline bool call_returns_ptr(Instruction *I) {
+  assert((I->getOpcode() == Instruction::Call) && "Called on non-call insn.");
+  llvm::Value *V;
+  // The last operand of the call instruction is a pointer to the called fn.
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+      OI != OE; ++OI) {
+    V = *OI;
+  }
+  // V is a pointer to a function. The function itself is the pointer's
+  // first contained type. The return type is the first contained type of
+  // the function definition.
+  llvm::Type *RT = V->getType()->getContainedType(0)->getContainedType(0);
+  return RT->isPointerTy();
+}
+
+static inline unsigned count_const_val(Instruction *I, unsigned Val) {
+  unsigned constants = 0;
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+       OI != OE; ++OI) {
+    llvm::Value *V = *OI;
+    if (const ConstantInt *CI = dyn_cast<ConstantInt>(V))
+      if (CI->getValue() == Val)
+        constants++;
+  }
+  return constants;
+}
+
+static inline unsigned count_int_consts(Instruction *I, unsigned size) {
+  unsigned constants = 0;
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+       OI != OE; ++OI) {
+    llvm::Value *V = *OI;
+    llvm::Type *T = V->getType();
+    if (V->getValueID() == Value::ConstantIntVal && T->isIntegerTy(size)) {
+      constants++;
+    }
+  }
+  return constants;
 }
 
 namespace {
@@ -192,7 +267,7 @@ namespace {
       unsigned insn_count_lt15 = 0;       //ft13
       unsigned insn_count_15_to_500 = 0;  //ft14
       unsigned insn_count_gt500 = 0;      //ft15
-      unsigned direct_calls = 0;          //ft16
+      unsigned direct_calls = 0;          //ft19
       unsigned method_assignments = 0;    //ft21
       unsigned method_binary_int = 0;     //ft22
       unsigned method_binary_float = 0;   //ft23
@@ -204,6 +279,14 @@ namespace {
       unsigned bb_phi_args_gt5 = 0;       //ft31
       unsigned bb_phi_args_1_to_5 = 0;    //ft32
       unsigned method_switch_stmt = 0;    //ft33
+      unsigned calls_with_ptr_args = 0;   //ft42
+      unsigned calls_gt4_ops = 0;         //ft43
+      unsigned calls_ret_ptr = 0;         //ft44
+      unsigned calls_ret_int = 0;         //ft45
+      unsigned const_int_zeroes = 0;      //ft46
+      unsigned const_32bit_uses = 0;      //ft47
+      unsigned const_int_ones = 0;        //ft48
+      unsigned const_64bit_uses = 0;      //ft49
 
       // Cross-BasicBlock Temporaries
       unsigned phi_header_nodes = 0;      //total for ft26
@@ -229,13 +312,27 @@ namespace {
           if (insn_is_assignment(I)) {
             method_assignments++;
           }
-          if (I->getOpcode() == Instruction::Call)
+          if (I->getOpcode() == Instruction::Call) {
             direct_calls++;
+            if (call_has_ptr_arg(I))
+              calls_with_ptr_args++;
+            if (insn_count_operands(I) > 4)
+              calls_gt4_ops++;
+            if (call_returns_ptr(I))
+              calls_ret_ptr++;
+            if (call_returns_int(I))
+              calls_ret_int++;
+          }
 
           if (insn_is_binary_int(I))
             method_binary_int++;
           if (insn_is_binary_float(I))
             method_binary_float++;
+          const_32bit_uses += count_int_consts(I, 32);
+          const_64bit_uses += count_int_consts(I, 64);
+          const_int_zeroes += count_const_val(I, 0);
+          const_int_ones += count_const_val(I, 1);
+
           if (I->getOpcode() == Instruction::PHI) {
             phi_nodes++;
             total_phi_nodes++;
@@ -319,8 +416,10 @@ namespace {
       errs() << "  (ft13) BB with insn < 15:       " << insn_count_lt15 << '\n';
       errs() << "  (ft14) BB with insn [15, 500]:  " << insn_count_15_to_500 << '\n';
       errs() << "  (ft15) BB with insn > 500:      " << insn_count_gt500 << '\n';
-      errs() << "  (ft16) Number of direct calls:  " << direct_calls << '\n';
+      errs() << "  (ft19) Number of direct calls:  " << direct_calls << '\n';
       errs() << "  (ft21) Assignments in method:   " << method_assignments << '\n';
+      errs() << "  (ft22) Binary int ops in method:" << method_binary_int << '\n';
+      errs() << "  (ft23) Binary fp ops in method: " << method_binary_float << '\n';
       errs() << "  (ft24) Total Statement in BB:   " << vector_sum(insncounts) << '\n';
       errs() << "  (ft25) Avg Statement in BB:     " << vector_sum(insncounts)
                 /basicblocks << '\n';
@@ -332,6 +431,14 @@ namespace {
       errs() << "  (ft31) BB phis with > 5 args:   " << bb_phi_args_gt5 << '\n';
       errs() << "  (ft32) BB phis with [1,5] args: " << bb_phi_args_1_to_5 << '\n';
       errs() << "  (ft33) Switch stmts in method:  " << method_switch_stmt << '\n';
+      errs() << "  (ft42) Calls with ptr arg:      " << calls_with_ptr_args << '\n';
+      errs() << "  (ft43) Calls with > 4 ops:      " << calls_gt4_ops << '\n';
+      errs() << "  (ft44) Calls that return ptr:   " << calls_ret_ptr << '\n';
+      errs() << "  (ft45) Calls that return int:   " << calls_ret_int << '\n';
+      errs() << "  (ft46) Uses of const inst 0:    " << const_int_zeroes << '\n';
+      errs() << "  (ft47) Uses of 32bit int consts:" << const_32bit_uses << '\n';
+      errs() << "  (ft48) Uses of const inst 1:    " << const_int_ones << '\n';
+      errs() << "  (ft49) Uses of 64bit int consts:" << const_64bit_uses << '\n';
 
       /* Build feature vector to pass to machine learner */
       std::vector<mageec::mageec_feature*> features;
