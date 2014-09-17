@@ -1,11 +1,9 @@
 set(LLVM_LINK_COMPONENTS
   MC
-  )
-
-set(MCSources
-  MCAtomTest.cpp
+  Support
   )
 
 add_llvm_unittest(MCTests
-  ${MCSources}
+  StringTableBuilderTest.cpp
+  YAMLTest.cpp
   )

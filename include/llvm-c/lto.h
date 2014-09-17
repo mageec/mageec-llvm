@@ -40,7 +40,7 @@ typedef bool lto_bool_t;
  * @{
  */
 
-#define LTO_API_VERSION 7
+#define LTO_API_VERSION 10
 
 /**
  * \since prior to LTO_API_VERSION=3
@@ -79,23 +79,15 @@ typedef enum {
 typedef enum {
     LTO_CODEGEN_PIC_MODEL_STATIC         = 0,
     LTO_CODEGEN_PIC_MODEL_DYNAMIC        = 1,
-    LTO_CODEGEN_PIC_MODEL_DYNAMIC_NO_PIC = 2
+    LTO_CODEGEN_PIC_MODEL_DYNAMIC_NO_PIC = 2,
+    LTO_CODEGEN_PIC_MODEL_DEFAULT        = 3
 } lto_codegen_model;
 
-/**
- * \since LTO_API_VERSION=6
- */
-typedef enum {
-    LTO_INTERNALIZE_FULL   = 0,
-    LTO_INTERNALIZE_NONE   = 1,
-    LTO_INTERNALIZE_HIDDEN = 2
-} lto_internalize_strategy;
-
 /** opaque reference to a loaded object module */
-typedef struct LTOModule*         lto_module_t;
+typedef struct LLVMOpaqueLTOModule *lto_module_t;
 
 /** opaque reference to a code generator */
-typedef struct LTOCodeGenerator*  lto_code_gen_t;
+typedef struct LLVMOpaqueLTOCodeGenerator *lto_code_gen_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -176,6 +168,16 @@ extern lto_module_t
 lto_module_create_from_memory(const void* mem, size_t length);
 
 /**
+ * Loads an object file from memory with an extra path argument.
+ * Returns NULL on error (check lto_get_error_message() for details).
+ *
+ * \since prior to LTO_API_VERSION=9
+ */
+extern lto_module_t
+lto_module_create_from_memory_with_path(const void* mem, size_t length,
+                                        const char *path);
+
+/**
  * Loads an object file from disk. The seek point of fd is not preserved.
  * Returns NULL on error (check lto_get_error_message() for details).
  *
@@ -246,15 +248,53 @@ lto_module_get_symbol_name(lto_module_t mod, unsigned int index);
 extern lto_symbol_attributes
 lto_module_get_symbol_attribute(lto_module_t mod, unsigned int index);
 
+
+/**
+ * Returns the number of dependent libraries in the object module.
+ *
+ * \since LTO_API_VERSION=8
+ */
+extern unsigned int
+lto_module_get_num_deplibs(lto_module_t mod);
+
+
+/**
+ * Returns the ith dependent library in the module.
+ *
+ * \since LTO_API_VERSION=8
+ */
+extern const char*
+lto_module_get_deplib(lto_module_t mod, unsigned int index);
+
+
+/**
+ * Returns the number of linker options in the object module.
+ *
+ * \since LTO_API_VERSION=8
+ */
+extern unsigned int
+lto_module_get_num_linkeropts(lto_module_t mod);
+
+
+/**
+ * Returns the ith linker option in the module.
+ *
+ * \since LTO_API_VERSION=8
+ */
+extern const char*
+lto_module_get_linkeropt(lto_module_t mod, unsigned int index);
+
+
 /**
  * Diagnostic severity.
  *
  * \since LTO_API_VERSION=7
  */
 typedef enum {
-  LTO_DS_ERROR,
-  LTO_DS_WARNING,
-  LTO_DS_NOTE
+  LTO_DS_ERROR = 0,
+  LTO_DS_WARNING = 1,
+  LTO_DS_REMARK = 3, // Added in LTO_API_VERSION=10.
+  LTO_DS_NOTE = 2
 } lto_codegen_diagnostic_severity_t;
 
 /**
@@ -355,18 +395,9 @@ lto_codegen_set_assembler_args(lto_code_gen_t cg, const char **args,
                                int nargs);
 
 /**
- * Sets the strategy to use during internalize.  Default strategy is
- * LTO_INTERNALIZE_FULL.
- *
- * \since LTO_API_VERSION=6
- */
-extern void
-lto_codegen_set_internalize_strategy(lto_code_gen_t cg,
-                                     lto_internalize_strategy);
-
-/**
- * Tells LTO optimization passes that this symbol must be preserved
- * because it is referenced by native code or a command line option.
+ * Adds to a list of all global symbols that must exist in the final generated
+ * code. If a function is not listed there, it might be inlined into every usage
+ * and optimized away.
  *
  * \since prior to LTO_API_VERSION=3
  */

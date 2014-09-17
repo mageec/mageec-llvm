@@ -28,6 +28,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/UniqueLock.h"
 #include <cmath>
 #include <csignal>
 #include <cstdio>
@@ -98,13 +99,13 @@ static ExFunc lookupFunction(const Function *F) {
 
   sys::ScopedLock Writer(*FunctionsLock);
   ExFunc FnPtr = FuncNames[ExtName];
-  if (FnPtr == 0)
+  if (!FnPtr)
     FnPtr = FuncNames["lle_X_" + F->getName().str()];
-  if (FnPtr == 0)  // Try calling a generic function... if it exists...
+  if (!FnPtr)  // Try calling a generic function... if it exists...
     FnPtr = (ExFunc)(intptr_t)
       sys::DynamicLibrary::SearchForAddressOfSymbol("lle_X_" +
                                                     F->getName().str());
-  if (FnPtr != 0)
+  if (FnPtr)
     ExportedFunctions->insert(std::make_pair(F, FnPtr));  // Cache for later
   return FnPtr;
 }
@@ -248,14 +249,14 @@ GenericValue Interpreter::callExternalFunction(Function *F,
                                      const std::vector<GenericValue> &ArgVals) {
   TheInterpreter = this;
 
-  FunctionsLock->acquire();
+  unique_lock<sys::Mutex> Guard(*FunctionsLock);
 
   // Do a lookup to see if the function is in our cache... this should just be a
   // deferred annotation!
   std::map<const Function *, ExFunc>::iterator FI = ExportedFunctions->find(F);
   if (ExFunc Fn = (FI == ExportedFunctions->end()) ? lookupFunction(F)
                                                    : FI->second) {
-    FunctionsLock->release();
+    Guard.unlock();
     return Fn(F->getFunctionType(), ArgVals);
   }
 
@@ -273,7 +274,7 @@ GenericValue Interpreter::callExternalFunction(Function *F,
     RawFn = RF->second;
   }
 
-  FunctionsLock->release();
+  Guard.unlock();
 
   GenericValue Result;
   if (RawFn != 0 && ffiInvoke(RawFn, F, ArgVals, getDataLayout(), Result))

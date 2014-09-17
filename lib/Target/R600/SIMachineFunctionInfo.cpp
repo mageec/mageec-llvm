@@ -10,8 +10,12 @@
 
 
 #include "SIMachineFunctionInfo.h"
+#include "SIInstrInfo.h"
 #include "SIRegisterInfo.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/LLVMContext.h"
 
 #define MAX_LANES 64
 
@@ -24,32 +28,51 @@ void SIMachineFunctionInfo::anchor() {}
 SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
   : AMDGPUMachineFunction(MF),
     PSInputAddr(0),
-    SpillTracker() { }
+    NumUserSGPRs(0) { }
 
-static unsigned createLaneVGPR(MachineRegisterInfo &MRI) {
-  return MRI.createVirtualRegister(&AMDGPU::VReg_32RegClass);
+/// \brief Returns a register that is not used at any point in the function.
+///        If all registers are used, then this function will return
+//         AMDGPU::NoRegister.
+static unsigned findUnusedVGPR(const MachineRegisterInfo &MRI) {
+
+  const TargetRegisterClass *RC = &AMDGPU::VGPR_32RegClass;
+
+  for (TargetRegisterClass::iterator I = RC->begin(), E = RC->end();
+       I != E; ++I) {
+    if (!MRI.isPhysRegUsed(*I))
+      return *I;
+  }
+  return AMDGPU::NoRegister;
 }
 
-unsigned SIMachineFunctionInfo::RegSpillTracker::getNextLane(MachineRegisterInfo &MRI) {
-  if (!LaneVGPR) {
-    LaneVGPR = createLaneVGPR(MRI);
-  } else {
-    CurrentLane++;
-    if (CurrentLane == MAX_LANES) {
-      CurrentLane = 0;
-      LaneVGPR = createLaneVGPR(MRI);
+SIMachineFunctionInfo::SpilledReg SIMachineFunctionInfo::getSpilledReg(
+                                                       MachineFunction *MF,
+                                                       unsigned FrameIndex,
+                                                       unsigned SubIdx) {
+  const MachineFrameInfo *FrameInfo = MF->getFrameInfo();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+  int64_t Offset = FrameInfo->getObjectOffset(FrameIndex);
+  Offset += SubIdx * 4;
+
+  unsigned LaneVGPRIdx = Offset / (64 * 4);
+  unsigned Lane = (Offset / 4) % 64;
+
+  struct SpilledReg Spill;
+
+  if (!LaneVGPRs.count(LaneVGPRIdx)) {
+    unsigned LaneVGPR = findUnusedVGPR(MRI);
+    LaneVGPRs[LaneVGPRIdx] = LaneVGPR;
+    MRI.setPhysRegUsed(LaneVGPR);
+
+    // Add this register as live-in to all blocks to avoid machine verifer
+    // complaining about use of an undefined physical register.
+    for (MachineFunction::iterator BI = MF->begin(), BE = MF->end();
+         BI != BE; ++BI) {
+      BI->addLiveIn(LaneVGPR);
     }
   }
-  return CurrentLane;
-}
 
-void SIMachineFunctionInfo::RegSpillTracker::addSpilledReg(unsigned FrameIndex,
-                                                           unsigned Reg,
-                                                           int Lane) {
-  SpilledRegisters[FrameIndex] = SpilledReg(Reg, Lane);
-}
-
-const SIMachineFunctionInfo::SpilledReg&
-SIMachineFunctionInfo::RegSpillTracker::getSpilledReg(unsigned FrameIndex) {
-  return SpilledRegisters[FrameIndex];
+  Spill.VGPR = LaneVGPRs[LaneVGPRIdx];
+  Spill.Lane = Lane;
+  return Spill;
 }

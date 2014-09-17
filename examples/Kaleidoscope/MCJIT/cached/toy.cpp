@@ -715,7 +715,7 @@ public:
         // This file isn't in our cache
         return NULL;
       }
-      OwningPtr<MemoryBuffer> IRObjectBuffer;
+      std::unique_ptr<MemoryBuffer> IRObjectBuffer;
       MemoryBuffer::getFile(IRCacheFile.c_str(), IRObjectBuffer, -1, false);
       // MCJIT will want to write into this buffer, and we don't want that
       // because the file has probably just been mmapped.  Instead we make
@@ -897,7 +897,6 @@ ExecutionEngine *MCJITHelper::compileModule(Module *M) {
   std::string ErrStr;
   ExecutionEngine *NewEngine = EngineBuilder(M)
                                             .setErrorStr(&ErrStr)
-                                            .setUseMCJIT(true)
                                             .setMCJITMemoryManager(new HelpingMemoryManager(this))
                                             .create();
   if (!NewEngine) {

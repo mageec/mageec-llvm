@@ -11,9 +11,9 @@
 #include "llvm-c/Initialization.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/PassRegistry.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cstring>
 
 using namespace llvm;
@@ -34,6 +34,7 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeCFGPrinterPass(Registry);
   initializeCFGOnlyViewerPass(Registry);
   initializeCFGOnlyPrinterPass(Registry);
+  initializeCFLAliasAnalysisPass(Registry);
   initializeDependenceAnalysisPass(Registry);
   initializeDelinearizationPass(Registry);
   initializeDominanceFrontierPass(Registry);
@@ -48,6 +49,7 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeIVUsersPass(Registry);
   initializeInstCountPass(Registry);
   initializeIntervalPartitionPass(Registry);
+  initializeJumpInstrTableInfoPass(Registry);
   initializeLazyValueInfoPass(Registry);
   initializeLibCallAliasAnalysisPass(Registry);
   initializeLintPass(Registry);
@@ -56,7 +58,7 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeMemoryDependenceAnalysisPass(Registry);
   initializeModuleDebugInfoPrinterPass(Registry);
   initializePostDominatorTreePass(Registry);
-  initializeRegionInfoPass(Registry);
+  initializeRegionInfoPassPass(Registry);
   initializeRegionViewerPass(Registry);
   initializeRegionPrinterPass(Registry);
   initializeRegionOnlyViewerPass(Registry);
@@ -65,6 +67,7 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeScalarEvolutionAliasAnalysisPass(Registry);
   initializeTargetTransformInfoAnalysisGroup(Registry);
   initializeTypeBasedAliasAnalysisPass(Registry);
+  initializeScopedNoAliasAAPass(Registry);
   initializeMageecFeatureExtractorPass(Registry);
 }
 
@@ -74,7 +77,7 @@ void LLVMInitializeAnalysis(LLVMPassRegistryRef R) {
 
 LLVMBool LLVMVerifyModule(LLVMModuleRef M, LLVMVerifierFailureAction Action,
                           char **OutMessages) {
-  raw_ostream *DebugOS = Action != LLVMReturnStatusAction ? &errs() : 0;
+  raw_ostream *DebugOS = Action != LLVMReturnStatusAction ? &errs() : nullptr;
   std::string Messages;
   raw_string_ostream MsgsOS(Messages);
 
@@ -95,7 +98,8 @@ LLVMBool LLVMVerifyModule(LLVMModuleRef M, LLVMVerifierFailureAction Action,
 
 LLVMBool LLVMVerifyFunction(LLVMValueRef Fn, LLVMVerifierFailureAction Action) {
   LLVMBool Result = verifyFunction(
-      *unwrap<Function>(Fn), Action != LLVMReturnStatusAction ? &errs() : 0);
+      *unwrap<Function>(Fn), Action != LLVMReturnStatusAction ? &errs()
+                                                              : nullptr);
 
   if (Action == LLVMAbortProcessAction && Result)
     report_fatal_error("Broken function found, compilation aborted!");

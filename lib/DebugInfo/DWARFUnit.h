@@ -7,14 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_DEBUGINFO_DWARFUNIT_H
-#define LLVM_DEBUGINFO_DWARFUNIT_H
+#ifndef LLVM_LIB_DEBUGINFO_DWARFUNIT_H
+#define LLVM_LIB_DEBUGINFO_DWARFUNIT_H
 
 #include "DWARFDebugAbbrev.h"
 #include "DWARFDebugInfoEntry.h"
 #include "DWARFDebugRangeList.h"
 #include "DWARFRelocMap.h"
-#include "llvm/ADT/OwningPtr.h"
 #include <vector>
 
 namespace llvm {
@@ -23,14 +22,63 @@ namespace object {
 class ObjectFile;
 }
 
+class DWARFContext;
 class DWARFDebugAbbrev;
 class StringRef;
 class raw_ostream;
+class DWARFUnit;
+
+/// Base class for all DWARFUnitSection classes. This provides the
+/// functionality common to all unit types.
+class DWARFUnitSectionBase {
+public:
+  /// Returns the Unit that contains the given section offset in the
+  /// same section this Unit originated from.
+  virtual DWARFUnit *getUnitForOffset(uint32_t Offset) const = 0;
+
+protected:
+  ~DWARFUnitSectionBase() {}
+};
+
+/// Concrete instance of DWARFUnitSection, specialized for one Unit type.
+template<typename UnitType>
+class DWARFUnitSection final : public SmallVector<std::unique_ptr<UnitType>, 1>,
+                               public DWARFUnitSectionBase {
+
+  struct UnitOffsetComparator {
+    bool operator()(const std::unique_ptr<UnitType> &LHS,
+                    const std::unique_ptr<UnitType> &RHS) const {
+      return LHS->getOffset() < RHS->getOffset();
+    }
+    bool operator()(const std::unique_ptr<UnitType> &LHS,
+                    uint32_t RHS) const {
+      return LHS->getOffset() < RHS;
+    }
+    bool operator()(uint32_t LHS,
+                    const std::unique_ptr<UnitType> &RHS) const {
+      return LHS < RHS->getOffset();
+    }
+  };
+
+public:
+  typedef llvm::SmallVectorImpl<std::unique_ptr<UnitType>> UnitVector;
+  typedef typename UnitVector::iterator iterator;
+  typedef llvm::iterator_range<typename UnitVector::iterator> iterator_range;
+
+  UnitType *getUnitForOffset(uint32_t Offset) const {
+    auto *CU = std::lower_bound(this->begin(), this->end(), Offset,
+                                UnitOffsetComparator());
+    if (CU != this->end())
+      return CU->get();
+    return nullptr;
+  }
+};
 
 class DWARFUnit {
+  DWARFContext &Context;
+
   const DWARFDebugAbbrev *Abbrev;
   StringRef InfoSection;
-  StringRef AbbrevSection;
   StringRef RangeSection;
   uint32_t RangeSectionBase;
   StringRef StringSection;
@@ -39,6 +87,7 @@ class DWARFUnit {
   uint32_t AddrOffsetSectionBase;
   const RelocAddrMap *RelocMap;
   bool isLittleEndian;
+  const DWARFUnitSectionBase &UnitSection;
 
   uint32_t Offset;
   uint32_t Length;
@@ -50,25 +99,28 @@ class DWARFUnit {
   std::vector<DWARFDebugInfoEntryMinimal> DieArray;
 
   class DWOHolder {
-    OwningPtr<object::ObjectFile> DWOFile;
-    OwningPtr<DWARFContext> DWOContext;
+    object::OwningBinary<object::ObjectFile> DWOFile;
+    std::unique_ptr<DWARFContext> DWOContext;
     DWARFUnit *DWOU;
   public:
-    DWOHolder(object::ObjectFile *DWOFile);
+    DWOHolder(StringRef DWOPath);
     DWARFUnit *getUnit() const { return DWOU; }
   };
-  OwningPtr<DWOHolder> DWO;
+  std::unique_ptr<DWOHolder> DWO;
 
 protected:
   virtual bool extractImpl(DataExtractor debug_info, uint32_t *offset_ptr);
+  /// Size in bytes of the unit header.
+  virtual uint32_t getHeaderSize() const { return 11; }
 
 public:
-
-  DWARFUnit(const DWARFDebugAbbrev *DA, StringRef IS, StringRef AS,
+  DWARFUnit(DWARFContext& Context, const DWARFDebugAbbrev *DA, StringRef IS,
             StringRef RS, StringRef SS, StringRef SOS, StringRef AOS,
-            const RelocAddrMap *M, bool LE);
+            const RelocAddrMap *M, bool LE, const DWARFUnitSectionBase &UnitSection);
 
   virtual ~DWARFUnit();
+
+  DWARFContext& getContext() const { return Context; }
 
   StringRef getStringSection() const { return StringSection; }
   StringRef getStringOffsetSection() const { return StringOffsetSection; }
@@ -103,12 +155,7 @@ public:
                         DWARFDebugRangeList &RangeList) const;
   void clear();
   uint32_t getOffset() const { return Offset; }
-  /// Size in bytes of the compile unit header.
-  virtual uint32_t getSize() const { return 11; }
-  uint32_t getFirstDIEOffset() const { return Offset + getSize(); }
   uint32_t getNextUnitOffset() const { return Offset + Length + 4; }
-  /// Size in bytes of the .debug_info data associated with this compile unit.
-  size_t getDebugInfoSize() const { return Length + 4 - getSize(); }
   uint32_t getLength() const { return Length; }
   uint16_t getVersion() const { return Version; }
   const DWARFAbbreviationDeclarationSet *getAbbreviations() const {
@@ -124,22 +171,26 @@ public:
   const DWARFDebugInfoEntryMinimal *
   getCompileUnitDIE(bool extract_cu_die_only = true) {
     extractDIEsIfNeeded(extract_cu_die_only);
-    return DieArray.empty() ? NULL : &DieArray[0];
+    return DieArray.empty() ? nullptr : &DieArray[0];
   }
 
   const char *getCompilationDir();
   uint64_t getDWOId();
 
-  void buildAddressRangeTable(DWARFDebugAranges *debug_aranges,
-                              bool clear_dies_if_already_not_parsed,
-                              uint32_t CUOffsetInAranges);
+  void collectAddressRanges(DWARFAddressRangesVector &CURanges);
 
   /// getInlinedChainForAddress - fetches inlined chain for a given address.
   /// Returns empty chain if there is no subprogram containing address. The
   /// chain is valid as long as parsed compile unit DIEs are not cleared.
   DWARFDebugInfoEntryInlinedChain getInlinedChainForAddress(uint64_t Address);
 
+  /// getUnitSection - Return the DWARFUnitSection containing this unit.
+  const DWARFUnitSectionBase &getUnitSection() const { return UnitSection; }
+
 private:
+  /// Size in bytes of the .debug_info data associated with this compile unit.
+  size_t getDebugInfoSize() const { return Length + 4 - getHeaderSize(); }
+
   /// extractDIEsIfNeeded - Parses a compile unit and indexes its DIEs if it
   /// hasn't already been done. Returns the number of DIEs parsed at this call.
   size_t extractDIEsIfNeeded(bool CUDieOnly);

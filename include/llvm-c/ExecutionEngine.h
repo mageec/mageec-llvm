@@ -34,7 +34,6 @@ extern "C" {
  * @{
  */
 
-void LLVMLinkInJIT(void);
 void LLVMLinkInMCJIT(void);
 void LLVMLinkInInterpreter(void);
 
@@ -163,6 +162,8 @@ void *LLVMRecompileAndRelinkFunction(LLVMExecutionEngineRef EE,
                                      LLVMValueRef Fn);
 
 LLVMTargetDataRef LLVMGetExecutionEngineTargetData(LLVMExecutionEngineRef EE);
+LLVMTargetMachineRef
+LLVMGetExecutionEngineTargetMachine(LLVMExecutionEngineRef EE);
 
 void LLVMAddGlobalMapping(LLVMExecutionEngineRef EE, LLVMValueRef Global,
                           void* Addr);

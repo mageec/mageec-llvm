@@ -45,7 +45,6 @@ LBB0_2:                                 # %return
 // CHECK-NEXT:   AuxWeakExternal {
 // CHECK-NEXT:     Linked: .weak._test_weak.default
 // CHECK-NEXT:      Search: Library
-// CHECK-NEXT:      Unused: (00 00 00 00 00 00 00 00 00 00)
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 
@@ -70,6 +69,5 @@ LBB0_2:                                 # %return
 // CHECK-NEXT:   AuxWeakExternal {
 // CHECK-NEXT:     Linked: _main
 // CHECK-NEXT:      Search: Library
-// CHECK-NEXT:      Unused: (00 00 00 00 00 00 00 00 00 00)
 // CHECK-NEXT:   }
 // CHECK-NEXT: }

@@ -21,13 +21,16 @@
 #ifndef LLVM_IR_VERIFIER_H
 #define LLVM_IR_VERIFIER_H
 
+#include "llvm/ADT/StringRef.h"
 #include <string>
 
 namespace llvm {
 
-class FunctionPass;
-class Module;
 class Function;
+class FunctionPass;
+class ModulePass;
+class Module;
+class PreservedAnalyses;
 class raw_ostream;
 
 /// \brief Check a function for errors, useful for use when debugging a
@@ -36,14 +39,14 @@ class raw_ostream;
 /// If there are no errors, the function returns false. If an error is found,
 /// a message describing the error is written to OS (if non-null) and true is
 /// returned.
-bool verifyFunction(const Function &F, raw_ostream *OS = 0);
+bool verifyFunction(const Function &F, raw_ostream *OS = nullptr);
 
 /// \brief Check a module for errors.
 ///
 /// If there are no errors, the function returns false. If an error is found,
 /// a message describing the error is written to OS (if non-null) and true is
 /// returned.
-bool verifyModule(const Module &M, raw_ostream *OS = 0);
+bool verifyModule(const Module &M, raw_ostream *OS = nullptr);
 
 /// \brief Create a verifier pass.
 ///
@@ -52,7 +55,33 @@ bool verifyModule(const Module &M, raw_ostream *OS = 0);
 /// functionality. When the pass detects a verification error it is always
 /// printed to stderr, and by default they are fatal. You can override that by
 /// passing \c false to \p FatalErrors.
+///
+/// Note that this creates a pass suitable for the legacy pass manager. It has nothing to do with \c VerifierPass.
 FunctionPass *createVerifierPass(bool FatalErrors = true);
+
+/// \brief Create a debug-info verifier pass.
+///
+/// Check a module for validity of debug info. This is essentially a pass
+/// wrapped around the debug-info parts of \a verifyModule().  When the pass
+/// detects a verification error it is always printed to stderr, and by default
+/// they are fatal. You can override that by passing \c false to \p
+/// FatalErrors.
+///
+/// Note that this creates a pass suitable for the legacy pass manager. It has
+/// nothing to do with \c VerifierPass.
+ModulePass *createDebugInfoVerifierPass(bool FatalErrors = true);
+
+class VerifierPass {
+  bool FatalErrors;
+
+public:
+  explicit VerifierPass(bool FatalErrors = true) : FatalErrors(FatalErrors) {}
+
+  PreservedAnalyses run(Module *M);
+  PreservedAnalyses run(Function *F);
+
+  static StringRef name() { return "VerifierPass"; }
+};
 
 } // End llvm namespace
 

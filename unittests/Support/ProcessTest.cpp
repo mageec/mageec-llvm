@@ -31,12 +31,19 @@ TEST(ProcessTest, SelfProcess) {
 
   EXPECT_LT(1u, process::get_self()->page_size());
 
-  EXPECT_LT(TimeValue::MinTime, process::get_self()->get_user_time());
-  EXPECT_GT(TimeValue::MaxTime, process::get_self()->get_user_time());
-  EXPECT_LT(TimeValue::MinTime, process::get_self()->get_system_time());
-  EXPECT_GT(TimeValue::MaxTime, process::get_self()->get_system_time());
-  EXPECT_LT(TimeValue::MinTime, process::get_self()->get_wall_time());
-  EXPECT_GT(TimeValue::MaxTime, process::get_self()->get_wall_time());
+  EXPECT_LT(TimeValue::MinTime(), process::get_self()->get_user_time());
+  EXPECT_GT(TimeValue::MaxTime(), process::get_self()->get_user_time());
+  EXPECT_LT(TimeValue::MinTime(), process::get_self()->get_system_time());
+  EXPECT_GT(TimeValue::MaxTime(), process::get_self()->get_system_time());
+  EXPECT_LT(TimeValue::MinTime(), process::get_self()->get_wall_time());
+  EXPECT_GT(TimeValue::MaxTime(), process::get_self()->get_wall_time());
+}
+
+TEST(ProcessTest, GetRandomNumberTest) {
+  const unsigned r1 = Process::GetRandomNumber();
+  const unsigned r2 = Process::GetRandomNumber();
+  // It should be extremely unlikely that both r1 and r2 are 0.
+  EXPECT_NE((r1 | r2), 0u);
 }
 
 #ifdef _MSC_VER

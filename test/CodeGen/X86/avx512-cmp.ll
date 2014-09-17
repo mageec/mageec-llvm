@@ -28,34 +28,14 @@ l2:
   ret float %c1
 }
 
+; FIXME: Can use vcmpeqss and extract from the mask here in AVX512.
 ; CHECK-LABEL: test3
-; CHECK: vcmpeqss
-; CHECK: kmov
-; CHECK: ret
+; CHECK: vucomiss {{.*}}encoding: [0x62
 define i32 @test3(float %a, float %b) {
 
   %cmp10.i = fcmp oeq float %a, %b
   %conv11.i = zext i1 %cmp10.i to i32
   ret i32 %conv11.i
-}
-
-; CHECK-LABEL: test4
-; CHECK: kortestw
-; CHECK: jne
-; CHECK: ret
-declare i32 @llvm.x86.avx512.kortestz.w(i16, i16)
-
-define i16 @test4(i16 %a, i16 %b) {
-  %kortz = call i32 @llvm.x86.avx512.kortestz.w(i16 %a, i16 %b)
-  %t1 = and i32 %kortz, 1
-  %res = icmp eq i32 %t1, 0
-  br i1 %res, label %A, label %B
-
- A: ret i16 %a
- B:
- %b1 = add i16 %a, %b
- ret i16 %b1
-
 }
 
 ; CHECK-LABEL: test5
@@ -104,4 +84,18 @@ define i32 @test8(i32 %a1, i32 %a2, i32 %a3) {
   %tmp5 = or i1 %tmp3, %tmp4
   %res = select i1 %tmp5, i32 1, i32 %a3
   ret i32 %res
-  }
+}
+
+; CHECK-LABEL: test9
+; CHECK: testb
+; CHECK-NOT: kmov
+; CHECK: ret
+define i32 @test9(i64 %a) {
+ %b = and i64 %a, 1
+ %cmp10.i = icmp eq i64 %b, 0
+ br i1 %cmp10.i, label %A, label %B
+A:
+ ret i32 6
+B:
+ ret i32 7
+}

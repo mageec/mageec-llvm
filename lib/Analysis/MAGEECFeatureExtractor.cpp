@@ -16,13 +16,13 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
+#include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/MAGEECPlugin.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mageec/vectormath.h"
 

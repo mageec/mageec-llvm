@@ -21,22 +21,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "simplifycfg"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/AssumptionTracker.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
+
+#define DEBUG_TYPE "simplifycfg"
 
 STATISTIC(NumSimpl, "Number of blocks simplified");
 
@@ -46,9 +48,10 @@ struct CFGSimplifyPass : public FunctionPass {
   CFGSimplifyPass() : FunctionPass(ID) {
     initializeCFGSimplifyPassPass(*PassRegistry::getPassRegistry());
   }
-  virtual bool runOnFunction(Function &F);
+  bool runOnFunction(Function &F) override;
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<AssumptionTracker>();
     AU.addRequired<TargetTransformInfo>();
   }
 };
@@ -58,6 +61,7 @@ char CFGSimplifyPass::ID = 0;
 INITIALIZE_PASS_BEGIN(CFGSimplifyPass, "simplifycfg", "Simplify the CFG", false,
                       false)
 INITIALIZE_AG_DEPENDENCY(TargetTransformInfo)
+INITIALIZE_PASS_DEPENDENCY(AssumptionTracker)
 INITIALIZE_PASS_END(CFGSimplifyPass, "simplifycfg", "Simplify the CFG", false,
                     false)
 
@@ -71,7 +75,7 @@ FunctionPass *llvm::createCFGSimplificationPass() {
 static bool mergeEmptyReturnBlocks(Function &F) {
   bool Changed = false;
 
-  BasicBlock *RetBlock = 0;
+  BasicBlock *RetBlock = nullptr;
 
   // Scan all the blocks in the function, looking for empty return blocks.
   for (Function::iterator BBI = F.begin(), E = F.end(); BBI != E; ) {
@@ -79,7 +83,7 @@ static bool mergeEmptyReturnBlocks(Function &F) {
 
     // Only look at return blocks.
     ReturnInst *Ret = dyn_cast<ReturnInst>(BB.getTerminator());
-    if (Ret == 0) continue;
+    if (!Ret) continue;
 
     // Only look at the block if it is empty or the only other thing in it is a
     // single PHI node that is the operand to the return.
@@ -98,7 +102,7 @@ static bool mergeEmptyReturnBlocks(Function &F) {
     }
 
     // If this is the first returning block, remember it and keep going.
-    if (RetBlock == 0) {
+    if (!RetBlock) {
       RetBlock = &BB;
       continue;
     }
@@ -119,7 +123,7 @@ static bool mergeEmptyReturnBlocks(Function &F) {
 
     // If the canonical return block has no PHI node, create one now.
     PHINode *RetBlockPHI = dyn_cast<PHINode>(RetBlock->begin());
-    if (RetBlockPHI == 0) {
+    if (!RetBlockPHI) {
       Value *InVal = cast<ReturnInst>(RetBlock->getTerminator())->getOperand(0);
       pred_iterator PB = pred_begin(RetBlock), PE = pred_end(RetBlock);
       RetBlockPHI = PHINode::Create(Ret->getOperand(0)->getType(),
@@ -145,7 +149,8 @@ static bool mergeEmptyReturnBlocks(Function &F) {
 /// iterativelySimplifyCFG - Call SimplifyCFG on all the blocks in the function,
 /// iterating until no more changes are made.
 static bool iterativelySimplifyCFG(Function &F, const TargetTransformInfo &TTI,
-                                   const DataLayout *TD) {
+                                   const DataLayout *DL,
+                                   AssumptionTracker *AT) {
   bool Changed = false;
   bool LocalChange = true;
   while (LocalChange) {
@@ -154,7 +159,7 @@ static bool iterativelySimplifyCFG(Function &F, const TargetTransformInfo &TTI,
     // Loop over all of the basic blocks and remove them if they are unneeded...
     //
     for (Function::iterator BBIt = F.begin(); BBIt != F.end(); ) {
-      if (SimplifyCFG(BBIt++, TTI, TD)) {
+      if (SimplifyCFG(BBIt++, TTI, DL, AT)) {
         LocalChange = true;
         ++NumSimpl;
       }
@@ -168,11 +173,16 @@ static bool iterativelySimplifyCFG(Function &F, const TargetTransformInfo &TTI,
 // simplify the CFG.
 //
 bool CFGSimplifyPass::runOnFunction(Function &F) {
+  if (skipOptnoneFunction(F))
+    return false;
+
+  AssumptionTracker *AT = &getAnalysis<AssumptionTracker>();
   const TargetTransformInfo &TTI = getAnalysis<TargetTransformInfo>();
-  const DataLayout *TD = getAnalysisIfAvailable<DataLayout>();
+  DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
+  const DataLayout *DL = DLP ? &DLP->getDataLayout() : nullptr;
   bool EverChanged = removeUnreachableBlocks(F);
   EverChanged |= mergeEmptyReturnBlocks(F);
-  EverChanged |= iterativelySimplifyCFG(F, TTI, TD);
+  EverChanged |= iterativelySimplifyCFG(F, TTI, DL, AT);
 
   // If neither pass changed anything, we're done.
   if (!EverChanged) return false;
@@ -186,7 +196,7 @@ bool CFGSimplifyPass::runOnFunction(Function &F) {
     return true;
 
   do {
-    EverChanged = iterativelySimplifyCFG(F, TTI, TD);
+    EverChanged = iterativelySimplifyCFG(F, TTI, DL, AT);
     EverChanged |= removeUnreachableBlocks(F);
   } while (EverChanged);
 
