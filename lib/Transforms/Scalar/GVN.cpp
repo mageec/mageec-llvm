@@ -620,6 +620,8 @@ namespace {
       initializeGVNPass(*PassRegistry::getPassRegistry());
     }
 
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnFunction(Function &F) override;
 
     /// markInstructionForDeletion - This removes the specified instruction from

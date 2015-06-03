@@ -24,6 +24,12 @@ namespace llvm {
   class PassInfo;
   class LibCallInfo;
 
+  //===--------------------------------------------------------------------===/
+  //
+  // createHelloWorldPass - This pass prints "Hello World"
+  //
+  ModulePass *createHelloWorldPass();
+
   //===--------------------------------------------------------------------===//
   //
   // createGlobalsModRefPass - This pass provides alias and mod/ref info for

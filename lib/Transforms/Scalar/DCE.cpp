@@ -39,6 +39,9 @@ namespace {
     DeadInstElimination() : BasicBlockPass(ID) {
       initializeDeadInstEliminationPass(*PassRegistry::getPassRegistry());
     }
+
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnBasicBlock(BasicBlock &BB) override {
       if (skipOptnoneFunction(BB))
         return false;
@@ -79,6 +82,8 @@ namespace {
     DCE() : FunctionPass(ID) {
       initializeDCEPass(*PassRegistry::getPassRegistry());
     }
+
+    bool mayHavePredicate() const override { return true; }
 
     bool runOnFunction(Function &F) override;
 

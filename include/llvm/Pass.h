@@ -30,6 +30,8 @@
 #define LLVM_PASS_H
 
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <string>
 
 namespace llvm {
@@ -141,8 +143,8 @@ public:
   virtual PassManagerType getPotentialPassManagerType() const;
 
   // Access AnalysisResolver
-  void setResolver(AnalysisResolver *AR);
-  AnalysisResolver *getResolver() const { return Resolver; }
+  virtual void setResolver(AnalysisResolver *AR);
+  virtual AnalysisResolver *getResolver() const { return Resolver; }
 
   /// getAnalysisUsage - This function should be overriden by passes that need
   /// analysis information to do their job.  If a pass specifies that it uses a
@@ -171,6 +173,18 @@ public:
   virtual void *getAdjustedAnalysisPointer(AnalysisID ID);
   virtual ImmutablePass *getAsImmutablePass();
   virtual PMDataManager *getAsPMDataManager();
+
+  /// mayHavePredicate - This method is used to determine whether the
+  /// running of a pass may depend on a runtime predicate.
+  virtual bool mayHavePredicate() const { return false; }
+
+  /// getPredicateWrapperPass - This method can be implemented by a pass to
+  /// retrieve a wrapper pass which allows the decision of whether
+  /// to run a pass to be deferred until runtime.
+  virtual Pass *getPredicateWrapperPass() { 
+    llvm_unreachable("Cannot retrieve predicate wrapper for base class");
+    return nullptr;
+  }
 
   /// verifyAnalysis() - This member can be implemented by a analysis pass to
   /// check state of analysis information.
@@ -243,6 +257,8 @@ public:
   /// being operated on.
   virtual bool runOnModule(Module &M) = 0;
 
+  Pass *getPredicateWrapperPass() override;
+
   void assignPassManager(PMStack &PMS, PassManagerType T) override;
 
   ///  Return what kind of Pass Manager can manage this pass.
@@ -251,6 +267,67 @@ public:
   explicit ModulePass(char &pid) : Pass(PT_Module, pid) {}
   // Force out-of-line virtual method.
   virtual ~ModulePass();
+};
+
+
+//===----------------------------------------------------------------------===//
+/// PredicateModulePass class - This class is used to wrap a ModulePass with
+/// a predicate, which allows it to be enabled/disabled at runtime. The
+/// wrapper takes ownership of the original module pass
+///
+class PredicateModulePass : public ModulePass {
+public:
+  static char ID;
+
+  // Most methods just defer to the held Module pass
+  const char *getPassName() const override { return MP->getPassName(); }
+  bool doInitialization(Module &M) override { return MP->doInitialization(M); }
+  bool doFinalization(Module &M) override { return MP->doFinalization(M); }
+
+  void print(raw_ostream &O, const Module *M) const override {
+    MP->print(O, M);
+  };
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    MP->getAnalysisUsage(AU);
+  }
+  void releaseMemory() override {
+    MP->releaseMemory();
+  }
+  void *getAdjustedAnalysisPointer(AnalysisID ID) {
+    return MP->getAdjustedAnalysisPointer(ID);
+  }
+
+  void verifyAnalysis() const override { MP->verifyAnalysis(); }
+
+  void dumpPassStructure(unsigned Offset) override {
+    MP->dumpPassStructure(Offset);
+  }
+
+  void setResolver(AnalysisResolver *AR) override {
+    MP->setResolver(AR);
+  }
+  AnalysisResolver *getResolver() const override {
+    return MP->getResolver();
+  }
+
+  // It does not makes sense to apply a predicate to an already
+  // predicated pass
+  bool mayHavePredicate() const override { return false; }
+
+  // ModulePass specific
+  bool runOnModule(Module &M) {
+    dbgs() << "BONJOUR!\n";
+    return MP->runOnModule(M);
+  }
+
+  explicit PredicateModulePass(ModulePass *Pass)
+    : ModulePass(ID),
+      MP(Pass)
+  {}
+ virtual ~PredicateModulePass() { delete MP; }
+
+private:
+  ModulePass* MP;
 };
 
 
@@ -304,6 +381,8 @@ public:
   ///
   virtual bool runOnFunction(Function &F) = 0;
 
+  Pass *getPredicateWrapperPass() override;
+
   void assignPassManager(PMStack &PMS, PassManagerType T) override;
 
   ///  Return what kind of Pass Manager can manage this pass.
@@ -313,6 +392,67 @@ protected:
   /// skipOptnoneFunction - This function has Attribute::OptimizeNone
   /// and most transformation passes should skip it.
   bool skipOptnoneFunction(const Function &F) const;
+};
+
+
+//===----------------------------------------------------------------------===//
+/// PredicateFunctionPass class - This class is used to wrap a Function Pass
+/// with a predicate, which allows it to be enabled/disabled at runtime. The
+/// wrapper takes ownership of the original function pass.
+///
+class PredicateFunctionPass : public FunctionPass {
+public:
+  static char ID;
+
+  // Most methods just defer to the held Module pass
+  const char *getPassName() const override { return FP->getPassName(); }
+  bool doInitialization(Module &M) override { return FP->doInitialization(M); }
+  bool doFinalization(Module &M) override { return FP->doFinalization(M); }
+
+  void print(raw_ostream &O, const Module *M) const override {
+    FP->print(O, M);
+  };
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    FP->getAnalysisUsage(AU);
+  }
+  void releaseMemory() override {
+    FP->releaseMemory();
+  }
+  void *getAdjustedAnalysisPointer(AnalysisID ID) {
+    return FP->getAdjustedAnalysisPointer(ID);
+  }
+
+  void verifyAnalysis() const override { FP->verifyAnalysis(); }
+
+  void dumpPassStructure(unsigned Offset) override {
+    FP->dumpPassStructure(Offset);
+  }
+
+  void setResolver(AnalysisResolver *AR) override {
+    FP->setResolver(AR);
+  }
+  AnalysisResolver *getResolver() const override {
+    return FP->getResolver();
+  }
+
+  // It does not makes sense to apply a predicate to an already predicated
+  // pass
+  bool mayHavePredicate() const override { return false; }
+
+  // ModulePass specific
+  bool runOnFunction(Function &F) {
+    dbgs() << "HALLO\n";
+    return FP->runOnFunction(F);
+  }
+
+  explicit PredicateFunctionPass(FunctionPass *Pass)
+    : FunctionPass(ID),
+      FP(Pass)
+  {}
+ virtual ~PredicateFunctionPass() { delete FP; }
+
+private:
+  FunctionPass* FP;
 };
 
 
@@ -348,6 +488,8 @@ public:
   ///
   virtual bool runOnBasicBlock(BasicBlock &BB) = 0;
 
+  Pass *getPredicateWrapperPass() override;
+
   /// doFinalization - Virtual method overriden by BasicBlockPass subclasses to
   /// do any post processing needed after all passes have run.
   ///
@@ -363,6 +505,74 @@ protected:
   /// and most transformation passes should skip it.
   bool skipOptnoneFunction(const BasicBlock &BB) const;
 };
+
+
+//===----------------------------------------------------------------------===//
+/// PredicateBasicBlockPass class - This class is used to wrap a Basic Block
+/// Pass with a predicate, which allows it to be enabled/disabled at
+/// runtime. The wrapper takes ownership of the original function pass.
+///
+class PredicateBasicBlockPass : public BasicBlockPass {
+public:
+  static char ID;
+
+  // Most methods just defer to the held Module pass
+  const char *getPassName() const override { return BBP->getPassName(); }
+
+  bool doInitialization(Module &M) override { return BBP->doInitialization(M); }
+  bool doFinalization(Module &M) override { return BBP->doFinalization(M); }
+
+  bool doInitialization(Function &F) override { return BBP->doInitialization(F); }
+  bool doFinalization(Function &F) override { return BBP->doFinalization(F); }
+
+  void print(raw_ostream &O, const Module *M) const override {
+    BBP->print(O, M);
+  };
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    BBP->getAnalysisUsage(AU);
+  }
+  void releaseMemory() override {
+    BBP->releaseMemory();
+  }
+  void *getAdjustedAnalysisPointer(AnalysisID ID) {
+    return BBP->getAdjustedAnalysisPointer(ID);
+  }
+
+  void verifyAnalysis() const override { BBP->verifyAnalysis(); }
+
+  void dumpPassStructure(unsigned Offset) override {
+    BBP->dumpPassStructure(Offset);
+  }
+
+  void setResolver(AnalysisResolver *AR) override {
+    BBP->setResolver(AR);
+  }
+  AnalysisResolver *getResolver() const override {
+    return BBP->getResolver();
+  }
+
+  // It does not makes sense to apply a predicate to an already predicated
+  // pass
+  bool mayHavePredicate() const override { return false; }
+
+  // ModulePass specific
+  bool runOnBasicBlock(BasicBlock &BB) {
+    dbgs() << "HALLO\n";
+    return BBP->runOnBasicBlock(BB);
+  }
+
+  explicit PredicateBasicBlockPass(BasicBlockPass *Pass)
+    : BasicBlockPass(ID),
+      BBP(Pass)
+  {}
+ virtual ~PredicateBasicBlockPass() { delete BBP; }
+
+private:
+  BasicBlockPass* BBP;
+};
+
+
+
 
 /// If the user specifies the -time-passes argument on an LLVM tool command line
 /// then the value of this boolean will be true, otherwise false.

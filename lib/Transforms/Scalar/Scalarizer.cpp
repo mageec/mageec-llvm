@@ -132,6 +132,8 @@ public:
     initializeScalarizerPass(*PassRegistry::getPassRegistry());
   }
 
+  bool mayHavePredicate() const override { return true; }
+
   bool doInitialization(Module &M) override;
   bool runOnFunction(Function &F) override;
 

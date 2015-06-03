@@ -21,6 +21,8 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/MAGEECPlugin.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
@@ -227,6 +229,16 @@ static inline unsigned count_const_val(Instruction *I, unsigned Val) {
   return constants;
 }
 
+static inline unsigned op_has_int_const(Instruction *I) {
+  for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
+       OI != OE; ++OI) {
+    llvm::Value *V = *OI;
+    if (V->getValueID() == Value::ConstantIntVal)
+      return true;
+  }
+  return false;
+}
+
 static inline unsigned count_int_consts(Instruction *I, unsigned size) {
   unsigned constants = 0;
   for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
@@ -268,7 +280,11 @@ namespace {
       unsigned insn_count_lt15 = 0;       //ft13
       unsigned insn_count_15_to_500 = 0;  //ft14
       unsigned insn_count_gt500 = 0;      //ft15
-      unsigned direct_calls = 0;          //ft19
+      unsigned cfg_edges = 0;             //ft16
+      unsigned cfg_crit_edges = 0;        //ft17
+//      unsigned cfg_abnorm_edge_count = 0; //ft18
+      unsigned cond_br_insn = 0;          //ft19
+      unsigned direct_calls = 0;          //ft20
       unsigned method_assignments = 0;    //ft21
       unsigned method_binary_int = 0;     //ft22
       unsigned method_binary_float = 0;   //ft23
@@ -280,14 +296,17 @@ namespace {
       unsigned bb_phi_args_gt5 = 0;       //ft31
       unsigned bb_phi_args_1_to_5 = 0;    //ft32
       unsigned method_switch_stmt = 0;    //ft33
+      unsigned method_unary_ops = 0;      //ft34
+      unsigned bin_op_int_const = 0;      //ft41      
       unsigned calls_with_ptr_args = 0;   //ft42
       unsigned calls_gt4_ops = 0;         //ft43
       unsigned calls_ret_ptr = 0;         //ft44
       unsigned calls_ret_int = 0;         //ft45
-      unsigned const_int_zeroes = 0;      //ft46
-      unsigned const_32bit_uses = 0;      //ft47
-      unsigned const_int_ones = 0;        //ft48
-      unsigned const_64bit_uses = 0;      //ft49
+      unsigned uncond_br_insn = 0;        //ft46
+      unsigned const_int_zeroes = 0;      //ft47
+      unsigned const_32bit_uses = 0;      //ft48
+      unsigned const_int_ones = 0;        //ft49
+      unsigned const_64bit_uses = 0;      //ft50
 
       // Cross-BasicBlock Temporaries
       unsigned phi_header_nodes = 0;      //total for ft26
@@ -319,14 +338,20 @@ namespace {
               calls_with_ptr_args++;
             if (insn_count_operands(I) > 4)
               calls_gt4_ops++;
+            if (insn_count_operands(I) == 1)
+              method_unary_ops++;
             if (call_returns_ptr(I))
               calls_ret_ptr++;
             if (call_returns_int(I))
               calls_ret_int++;
           }
 
-          if (insn_is_binary_int(I))
+          if (insn_is_binary_int(I)) {
             method_binary_int++;
+            bin_op_int_const += op_has_int_const(I);
+          }
+
+
           if (insn_is_binary_float(I))
             method_binary_float++;
           const_32bit_uses += count_int_consts(I, 32);
@@ -374,6 +399,27 @@ namespace {
         if ((preds > 2) && (succs > 2))
           bb_gt2pred_gt2succ++;
 
+        // CFG edge count is (maybe) total number of successors of all blocks
+        cfg_edges += succs;
+
+        // Count critical edges
+        TerminatorInst *TI = BB->getTerminator();
+        if (TI->getNumSuccessors() > 1 && !isa<IndirectBrInst>(TI)) {
+          unsigned succ_count = TI->getNumSuccessors();
+          for (unsigned i = 0; i < succ_count; ++i) {
+            cfg_crit_edges += isCriticalEdge(TI, i, true);
+          }
+        }
+
+        // Number of conditional and unconditional branch instructions
+        if (isa<BranchInst>(TI)) {
+          BranchInst *br = cast<BranchInst>(TI);
+          if (br->isConditional())
+            cond_br_insn++;
+          else
+            uncond_br_insn++;
+        }
+
         // Store processed data about this block
         insncounts.push_back(statementcount);
         if (statementcount < 15)
@@ -418,7 +464,10 @@ namespace {
       features.push_back(new basic_feature("ft13", "BB with insn < 15:", insn_count_lt15));
       features.push_back(new basic_feature("ft14", "BB with insn [15, 500]:", insn_count_15_to_500));
       features.push_back(new basic_feature("ft15", "BB with insn > 500:", insn_count_gt500));
-      features.push_back(new basic_feature("ft19", "Number of direct calls:", direct_calls));
+      features.push_back(new basic_feature("ft16", "Edges in CFG:", cfg_edges));
+      features.push_back(new basic_feature("ft17", "Critical Edges in CFG:", cfg_crit_edges));
+      features.push_back(new basic_feature("ft19", "Conditional Statements:", cond_br_insn)); 
+      features.push_back(new basic_feature("ft20", "Number of direct calls:", direct_calls));
       features.push_back(new basic_feature("ft21", "Assignments in method:", method_assignments));
       features.push_back(new basic_feature("ft22", "Binary int ops in method", method_binary_int));
       features.push_back(new basic_feature("ft23", "Binary fp ops in method:", method_binary_float));
@@ -432,15 +481,19 @@ namespace {
       features.push_back(new basic_feature("ft31", "BB phis with > 5 args:", bb_phi_args_gt5));
       features.push_back(new basic_feature("ft32", "BB phis with [1,5] args:", bb_phi_args_1_to_5));
       features.push_back(new basic_feature("ft33", "Switch stmts in method:", method_switch_stmt));
+      features.push_back(new basic_feature("ft34", "Unary ops in method:", method_unary_ops));
+      features.push_back(new basic_feature("ft41", "Binary ops with integer constant", bin_op_int_const));
       features.push_back(new basic_feature("ft42", "Calls with ptr arg:", calls_with_ptr_args));
       features.push_back(new basic_feature("ft43", "Calls with > 4 ops:", calls_gt4_ops));
       features.push_back(new basic_feature("ft44", "Calls that return ptr:", calls_ret_ptr));
       features.push_back(new basic_feature("ft45", "Calls that return int:", calls_ret_int));
-      features.push_back(new basic_feature("ft46", "Uses of const inst 0:", const_int_zeroes));
-      features.push_back(new basic_feature("ft47", "Uses of 32bit int consts", const_32bit_uses));
-      features.push_back(new basic_feature("ft48", "Uses of const inst 1:", const_int_ones));
-      features.push_back(new basic_feature("ft49", "Uses of 64bit int consts", const_64bit_uses));
-
+      // gives very different count to gcc plugin, disabled for now
+      //features.push_back(new basic_feature("ft46", "Unconditional branches:", uncond_br_insn));
+      features.push_back(new basic_feature("ft47", "Uses of const inst 0:", const_int_zeroes));
+      features.push_back(new basic_feature("ft48", "Uses of 32bit int consts", const_32bit_uses));
+      features.push_back(new basic_feature("ft49", "Uses of const inst 1:", const_int_ones));
+      features.push_back(new basic_feature("ft50", "Uses of 64bit int consts", const_64bit_uses));
+      
       instance.takeFeatures(F.getName(), features);
 
       // Print feature vector, first as a list and then as JSON

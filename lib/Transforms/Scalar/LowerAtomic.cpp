@@ -115,6 +115,9 @@ namespace {
     LowerAtomic() : BasicBlockPass(ID) {
       initializeLowerAtomicPass(*PassRegistry::getPassRegistry());
     }
+
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnBasicBlock(BasicBlock &BB) override {
       if (skipOptnoneFunction(BB))
         return false;

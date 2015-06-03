@@ -1507,6 +1507,8 @@ namespace {
       initializeSCCPPass(*PassRegistry::getPassRegistry());
     }
 
+    bool mayHavePredicate() const override { return true; }
+
     // runOnFunction - Run the Sparse Conditional Constant Propagation
     // algorithm, and return true if the function was modified.
     //
@@ -1639,6 +1641,9 @@ namespace {
     IPSCCP() : ModulePass(ID) {
       initializeIPSCCPPass(*PassRegistry::getPassRegistry());
     }
+
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnModule(Module &M) override;
   };
 } // end anonymous namespace

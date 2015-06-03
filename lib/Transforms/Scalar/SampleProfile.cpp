@@ -91,6 +91,8 @@ public:
 
   const char *getPassName() const override { return "Sample profile pass"; }
 
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnFunction(Function &F) override;
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {

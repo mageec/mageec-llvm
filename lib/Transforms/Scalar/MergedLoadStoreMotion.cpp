@@ -110,6 +110,8 @@ public:
     initializeMergedLoadStoreMotionPass(*PassRegistry::getPassRegistry());
   }
 
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnFunction(Function &F) override;
 
 private:

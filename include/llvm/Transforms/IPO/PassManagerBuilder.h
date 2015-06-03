@@ -111,6 +111,7 @@ public:
   /// added to the per-module passes.
   Pass *Inliner;
 
+  bool DisablePassPredicates;
   bool DisableTailCalls;
   bool DisableUnitAtATime;
   bool DisableUnrollLoops;
@@ -139,6 +140,8 @@ public:
   void addExtension(ExtensionPointTy Ty, ExtensionFn Fn);
 
 private:
+  void addPass(PassManagerBase &PM, Pass *P);
+
   void addExtensionsToPM(ExtensionPointTy ETy, PassManagerBase &PM) const;
   void addInitialAliasAnalysisPasses(PassManagerBase &PM) const;
   void addLTOOptimizationPasses(PassManagerBase &PM);

@@ -975,6 +975,9 @@ public:
         C(nullptr), DL(nullptr), DT(nullptr) {
     initializeSROAPass(*PassRegistry::getPassRegistry());
   }
+
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnFunction(Function &F) override;
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 

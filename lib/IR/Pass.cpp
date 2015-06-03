@@ -41,6 +41,27 @@ Pass *ModulePass::createPrinterPass(raw_ostream &O,
   return createPrintModulePass(O, Banner);
 }
 
+
+Pass *ModulePass::getPredicateWrapperPass() {
+  assert(mayHavePredicate());
+  return new PredicateModulePass(this);
+}
+
+Pass *FunctionPass::getPredicateWrapperPass() {
+  assert(mayHavePredicate());
+  return new PredicateFunctionPass(this);
+}
+
+Pass *BasicBlockPass::getPredicateWrapperPass() {
+  assert(mayHavePredicate());
+  return new PredicateBasicBlockPass(this);
+}
+
+char PredicateModulePass::ID = 0;
+char PredicateFunctionPass::ID = 0;
+char PredicateBasicBlockPass::ID = 0;
+
+
 PassManagerType ModulePass::getPotentialPassManagerType() const {
   return PMT_ModulePassManager;
 }

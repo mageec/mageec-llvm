@@ -107,6 +107,8 @@ namespace {
       initializeJumpThreadingPass(*PassRegistry::getPassRegistry());
     }
 
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnFunction(Function &F) override;
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {

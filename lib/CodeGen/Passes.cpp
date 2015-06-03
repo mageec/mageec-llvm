@@ -376,6 +376,10 @@ void TargetPassConfig::printAndVerify(const char *Banner) {
 /// Add common target configurable passes that perform LLVM IR to IR transforms
 /// following machine independent optimization.
 void TargetPassConfig::addIRPasses() {
+  // Hello World pass
+  addPass(createHelloWorldPass()->getPredicateWrapperPass());
+  addPass(createHelloWorldPass()->getPredicateWrapperPass());
+
   // Basic AliasAnalysis support.
   // Add TypeBasedAliasAnalysis before BasicAliasAnalysis so that
   // BasicAliasAnalysis wins if they disagree. This is intended to help

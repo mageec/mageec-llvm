@@ -61,6 +61,9 @@ public:
   
   using llvm::Pass::doInitialization;
   bool doInitialization(Function &) override;
+
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnBasicBlock(BasicBlock &BB) override;
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 

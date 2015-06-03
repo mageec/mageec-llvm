@@ -245,6 +245,8 @@ class SeparateConstOffsetFromGEP : public FunctionPass {
     return false;
   }
 
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnFunction(Function &F) override;
 
  private:

@@ -36,6 +36,8 @@ namespace {
       initializePartiallyInlineLibCallsPass(*PassRegistry::getPassRegistry());
     }
 
+    bool mayHavePredicate() const override { return true; }
+
     void getAnalysisUsage(AnalysisUsage &AU) const override;
     bool runOnFunction(Function &F) override;
 

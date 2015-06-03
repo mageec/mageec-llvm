@@ -124,6 +124,8 @@ public:
     initializeConstantHoistingPass(*PassRegistry::getPassRegistry());
   }
 
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnFunction(Function &Fn) override;
 
   const char *getPassName() const override { return "Constant Hoisting"; }

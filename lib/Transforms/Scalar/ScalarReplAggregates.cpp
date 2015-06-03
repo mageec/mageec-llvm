@@ -82,6 +82,8 @@ namespace {
         ScalarLoadThreshold = SLT;
     }
 
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnFunction(Function &F) override;
 
     bool performScalarRepl(Function &F);

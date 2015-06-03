@@ -50,6 +50,8 @@ struct AlignmentFromAssumptions : public FunctionPass {
     initializeAlignmentFromAssumptionsPass(*PassRegistry::getPassRegistry());
   }
 
+  bool mayHavePredicate() const override { return true; }
+
   bool runOnFunction(Function &F);
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {

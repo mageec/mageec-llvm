@@ -137,6 +137,7 @@ void initializeGVNPass(PassRegistry&);
 void initializeGlobalDCEPass(PassRegistry&);
 void initializeGlobalOptPass(PassRegistry&);
 void initializeGlobalsModRefPass(PassRegistry&);
+void initializeHelloWorldPass(PassRegistry&);
 void initializeIPCPPass(PassRegistry&);
 void initializeIPSCCPPass(PassRegistry&);
 void initializeIVUsersPass(PassRegistry&);

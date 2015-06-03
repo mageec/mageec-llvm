@@ -54,6 +54,8 @@ namespace {
       initializeDSEPass(*PassRegistry::getPassRegistry());
     }
 
+    bool mayHavePredicate() const override { return true; }
+
     bool runOnFunction(Function &F) override {
       if (skipOptnoneFunction(F))
         return false;
